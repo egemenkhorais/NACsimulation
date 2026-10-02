@@ -208,8 +208,31 @@ function App() {
                   {devices?.map(device => (
                     <tr key={device.id} className="hover:bg-slate-800/30 transition-colors group">
                       <td className="px-6 py-4">
-                        <div className="font-bold text-slate-200">{device.hostname || 'Unknown_Device'}</div>
-                        <div className="font-mono text-xs text-slate-500 group-hover:text-cyan-400 transition-colors">{device.mac_address}</div>
+                        <div className="flex items-center gap-3">
+                          {/* İkon / Rozet Kısmı */}
+                          <div className={`w-8 h-8 rounded flex items-center justify-center shrink-0 font-bold text-xs ${
+                            device.vendor?.includes('Apple') ? 'bg-slate-200 text-slate-800' :
+                            device.vendor?.includes('Cisco') ? 'bg-cyan-900/50 text-cyan-400 border border-cyan-700/50' :
+                            device.vendor?.includes('VMware') || device.vendor?.includes('VirtualBox') ? 'bg-indigo-900/50 text-indigo-400 border border-indigo-700/50' :
+                            device.vendor?.includes('Raspberry') ? 'bg-rose-900/50 text-rose-400 border border-rose-700/50' :
+                            'bg-slate-800 text-slate-400'
+                          }`}>
+                            {device.vendor ? device.vendor.charAt(0) : '?'}
+                          </div>
+
+                          {/* Metin Kısmı */}
+                          <div>
+                            <div className="font-bold text-slate-200">{device.hostname || 'Unknown_Device'}</div>
+                            <div className="flex items-center gap-2 mt-0.5">
+                              <span className="font-mono text-xs text-slate-500 group-hover:text-cyan-400 transition-colors">
+                                {device.mac_address}
+                              </span>
+                              <span className="text-[10px] bg-slate-800 px-1.5 py-0.5 rounded text-slate-400">
+                                {device.vendor || 'Bilinmiyor'}
+                              </span>
+                            </div>
+                          </div>
+                        </div>
                       </td>
                       <td className="px-6 py-4 text-center">
                         {device.av_active !== false ? (

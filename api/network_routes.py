@@ -2,6 +2,7 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from network_ops.switch_controller import SwitchController
 from database.supabase_client import db, TABLE_DEVICES, TABLE_LOGS, log_nac_event
+from core.mac_profiler import get_vendor_from_mac
 
 router = APIRouter()
 switch = SwitchController()
@@ -70,10 +71,22 @@ def block_port(request: PortActionRequest):
 
 @router.get("/devices")
 def get_all_devices():
-    """Ağdaki tüm kayıtlı cihazları getirir."""
+    """Ağdaki tüm kayıtlı cihazları getirir ve MAC profilini çıkarır."""
     try:
         response = db.table(TABLE_DEVICES).select("*").order("id").execute()
-        return response.data
+        devices = response.data
+
+        # Veritabanına hiç dokunmadan, sadece frontend'e giderken veriyi zenginleştiriyoruz
+        for d in devices:
+            mac = d.get("mac_address", "")
+            vendor = get_vendor_from_mac(mac)
+            d["vendor"] = vendor
+
+            # Eğer cihazın hostname'i yoksa, markasını hostname olarak ata
+            if not d.get("hostname"):
+                d["hostname"] = vendor
+
+        return devices
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
