@@ -18,53 +18,44 @@ class AuthRequest(BaseModel):
     switch_port: str = "GigabitEthernet0/1"
 
 
-def isolate_user_devices(username: str, mac: str, reason: str):
-    """Kullanıcıyı username ile bulur, cihazlarını VLAN 99'a alır (zaten 99 ise dokunmaz)."""
-    # 1. Kullanıcıyı bul
-    user_res = db.table(TABLE_USERS).select("id").eq("username", username).execute()
-    print("USER LOOKUP:", user_res.data)
-    if not user_res.data:
-        print(f"Kullanıcı yok, değiştirilecek bir şey yok: {username}")
+def isolate_target_mac(mac: str, reason: str, username: str):
+    print(f"\n--- SIFIR GÜVEN İZOLASYONU TETİKLENDİ ---")
+    print(f"Hedef MAC: {mac} | Kullanıcı: {username} | Sebep: {reason}")
+
+    # KESİN ÇÖZÜM: Tüm cihazları çek ve eşleşmeyi Python'da normalize ederek yap
+    all_devices = db.table(TABLE_DEVICES).select("id, mac_address, assigned_vlan").execute()
+
+    target_device = None
+    for d in all_devices.data:
+        # Hem gelen MAC'i hem DB'deki MAC'i aynı formata sokup kıyaslıyoruz
+        if normalize_mac(d.get("mac_address")) == mac:
+            target_device = d
+            break
+
+    if not target_device:
+        print(f"KRİTİK HATA: {mac} adresi veritabanında BULUNAMADI!")
+        # Debug için veritabanındaki mevcut MAC'leri yazdır
+        db_macs = [d.get('mac_address') for d in all_devices.data]
+        print(f"Mevcut Kayıtlı MAC'ler: {db_macs}")
         return
 
-    user_id = user_res.data[0]["id"]
+    device_id = target_device["id"]
+    current_vlan = target_device.get("assigned_vlan")
+    print(f"Eşleşme Başarılı -> Cihaz ID: {device_id} | Mevcut VLAN: {current_vlan}")
 
-    # 2. Kullanıcının cihazlarını çek
-    devices = (
-        db.table(TABLE_DEVICES)
-        .select("id, mac_address, assigned_vlan")
-        .eq("owner_id", user_id)
-        .execute()
-    )
-    print("USER DEVICES BEFORE:", devices.data)
-
-    if not devices.data:
-        print(f"{username} kullanıcısının devices tablosunda cihazı yok (owner_id eşleşmiyor olabilir)")
-        return
-
-    # 3. VLAN'ı 99 olmayanları 99 yap
-    for d in devices.data:
-        if d.get("assigned_vlan") == ISOLATION_VLAN:
-            continue
-        res = (
-            db.table(TABLE_DEVICES)
-            .update({"assigned_vlan": ISOLATION_VLAN})
-            .eq("id", d["id"])
-            .execute()
-        )
-        print(f"UPDATE device {d['id']}:", res.data)  # [] ise RLS engelliyor
-
-    # 4. Gerçekten değişti mi, geri okuyup doğrula
-    check = (
-        db.table(TABLE_DEVICES)
-        .select("id, mac_address, assigned_vlan")
-        .eq("owner_id", user_id)
-        .execute()
-    )
-    print("USER DEVICES AFTER:", check.data)
-
-    log_nac_event(mac, "AUTH_FAIL_ISOLATED", f"{username} -> VLAN 99. Sebep: {reason}")
-
+    if current_vlan != 99:
+        try:
+            print("Veritabanı güncelleniyor (VLAN -> 99)...")
+            res = db.table(TABLE_DEVICES).update({
+                "assigned_vlan": 99,
+            }).eq("id", device_id).execute()
+            print(f"GÜNCELLEME BAŞARILI: {res.data}")
+            log_nac_event(mac, "AUTH_FAIL_ISOLATED", f"VLAN 99 İzolasyonu. Sebep: {reason}")
+        except Exception as e:
+            print(f"GÜNCELLEME ESNASINDA VERİTABANI HATASI: {str(e)}")
+    else:
+        print("Cihaz zaten VLAN 99 izolasyonunda, işlem atlandı.")
+    print("------------------------------------------\n")
 
 @router.post("/login")
 def authenticate_endpoint(request: AuthRequest):
@@ -78,7 +69,8 @@ def authenticate_endpoint(request: AuthRequest):
 
     if not auth_result.get("status"):
         try:
-            isolate_user_devices(request.username, mac, auth_result.get("reason"))
+            # Hata yapan MAC adresini, kullanıcı adı ne olursa olsun izole et
+            isolate_target_mac(mac, auth_result.get("reason"), request.username)
         except Exception:
             traceback.print_exc()
 

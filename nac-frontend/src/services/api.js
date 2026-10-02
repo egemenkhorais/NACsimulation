@@ -31,3 +31,12 @@ export const getLogs = async () => {
     const response = await api.get('/network/logs');
     return response.data;
 };
+
+// Çakışma giderildi ve baseURL ile uyumlu hale getirildi
+export const updateDeviceVlan = async (deviceId, vlanId) => {
+    const response = await api.put(`/network/devices/${deviceId}/vlan`, {
+        vlan_id: parseInt(vlanId),
+        reason: "SOC Yöneticisi manuel müdahalesi"
+    });
+    return response.data;
+};
